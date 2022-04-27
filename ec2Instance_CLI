@@ -1,0 +1,8 @@
+aws ec2 run-instances \
+    --image-id ami-0f9fc25dd2506cf6d \
+    --instance-type t2.micro \
+    --count 1 \
+    --security-group-ids sg-092622555667c0a6c \
+    --key-name virginia_key \
+    --subnet-id subnet-0e7956a008b20b36d \
+    --tag-specifications 'ResourceType=instance,Tags=[{Key=webserver,Value=production}]'
