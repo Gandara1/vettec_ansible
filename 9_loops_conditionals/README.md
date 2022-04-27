@@ -1,118 +1,147 @@
-# Ansible Inventory
+# Loops
 
-It's very common to have a list of hosts that you need to deploy, configure, maintain, etc. Ansible provides a method for keeping track of them in one convenient file, and even provides ways to group them together and provide aliases for more flexibility. \
-Inventory files can be written in YAML , INI, or JSON, but in this course I will only be demonstrating them in INI. The default inventory file is located at /etc/ansible/hosts but you can overwrite the default location in your ansible.cfg configuration file, or you can provide your own configuration file when you run your Ansible commands. To specify a host file to use, pass the -i flag when running a command and provide the location to the file like this:
+Ansible offers the loop, with_lookup, and until keywords to execute a task multiple times. Examples of commonly-used loops include changing ownership on several files and/or directories with the file module, creating multiple users with the user module, and repeating a polling step until a certain result is reached.
 
-    ansible -i path/to/file -m module_name -a argument
+Standard loops
 
-You can even provide multiple inventory files by using the -i flag multiple times and providing the file path to each file.
+Iterating over a simple list
 
-Inside the inventory file, we can group together hosts underneath named groups that we denote by placing the group names into square brackets such as [groupname]. Hosts can appear in more than one group, making these files very flexible. You can also identify a specific port to use, otherwise Ansible will always default to port 22 for SSH. We can then select one or more groups to run our automations on instead of selecting all of the hosts in our inventory file.
+Repeated tasks can be written as standard loops over a simple list of strings. You can define the list directly in the task.
 
- 
----
-The inventory file can be in one of many formats, depending on the inventory plugins you have. The most common formats are INI and YAML. A basic INI /etc/ansible/hosts might look like this:
+    - name: Add several users
+      ansible.builtin.user:
+        name: "{{ item }}"
+        state: present
+        groups: "wheel"
+      loop:
+        - testuser1
+        - testuser2
 
-    mail.example.com
+You can define the list in a variables file, or in the ‘vars’ section of your play, then refer to the name of the list in the task.
 
-    [webservers]
-    foo.example.com
-    bar.example.com
+    loop: "{{ somelist }}"
 
-    [dbservers]
-    one.example.com
-    two.example.com
-    three.example.com
+Either of these examples would be the equivalent of
 
-The headings in brackets are group names, which are used in classifying hosts and deciding what hosts you are controlling at what times and for what purpose. Group names should follow the same guidelines as Creating valid variable names.
+    - name: Add user testuser1
+      ansible.builtin.user:
+        name: "testuser1"
+        state: present
+        groups: "wheel"
 
-Here’s that same basic inventory file in YAML format:
+    - name: Add user testuser2
+      ansible.builtin.user:
+        name: "testuser2"
+        state: present
+        groups: "wheel"
 
-    all:
-    hosts:
-        mail.example.com:
-    children:
-        webservers:
-        hosts:
-            foo.example.com:
-            bar.example.com:
-        dbservers:
-        hosts:
-            one.example.com:
-            two.example.com:
-            three.example.com:
+You can pass a list directly to a parameter for some plugins. Most of the packaging modules, like yum and apt, have this capability. When available, passing the list to a parameter is better than looping over the task. For example
 
+    - name: Optimal yum
+      ansible.builtin.yum:
+        name: "{{ list_of_packages }}"
+        state: present
 
-Adding variables to inventory
+    - name: Non-optimal yum, slower and may cause issues with interdependencies
+      ansible.builtin.yum:
+        name: "{{ item }}"
+        state: present
+      loop: "{{ list_of_packages }}"
 
-You can store variable values that relate to a specific host or group in inventory. To start with, you may add variables directly to the hosts and groups in your main inventory file. As you add more and more managed nodes to your Ansible inventory, however, you will likely want to store variables in separate host and group variable files. See Defining variables in inventory for details.
-Assigning a variable to one machine: host variables
+Check the module documentation to see if you can pass a list to any particular module’s parameter(s).
+Iterating over a list of hashes
 
-You can easily assign a variable to a single host, then use it later in playbooks. \
-\
-In INI:
+If you have a list of hashes, you can reference subkeys in a loop. For example:
 
-    [atlanta]
-    host1 http_port=80 maxRequestsPerChild=808
-    host2 http_port=303 maxRequestsPerChild=909
+    - name: Add several users
+      ansible.builtin.user:
+        name: "{{ item.name }}"
+        state: present
+        groups: "{{ item.groups }}"
+      loop:
+        - { name: 'testuser1', groups: 'wheel' }
+        - { name: 'testuser2', groups: 'root' }
 
-In YAML:
+When combining conditionals with a loop, the when: statement is processed separately for each item. See Basic conditionals with when for examples.
+Iterating over a dictionary
 
-    atlanta:
-    hosts:
-        host1:
-        http_port: 80
-        maxRequestsPerChild: 808
-        host2:
-        http_port: 303
-        maxRequestsPerChild: 909
+To loop over a dict, use the dict2items:
 
-Connection variables also work well as host variables:
+    - name: Using dict2items
+      ansible.builtin.debug:
+        msg: "{{ item.key }} - {{ item.value }}"
+      loop: "{{ tag_data | dict2items }}"
+      vars:
+        tag_data:
+          Environment: dev
+          Application: payment
 
-    [targets]
+Here, we are iterating over tag_data and printing the key and the value from it.
+Registering variables with a loop
 
-    localhost              ansible_connection=local
-    other1.example.com     ansible_connection=ssh        ansible_user=myuser
-    other2.example.com     ansible_connection=ssh        ansible_user=myotheruser
+You can register the output of a loop as a variable. For example
 
-Assigning a variable to many machines: group variables
+    - name: Register loop output as a variable
+      ansible.builtin.shell: "echo {{ item }}"
+      loop:
+        - "one"
+        - "two"
+      register: echo
 
-If all hosts in a group share a variable value, you can apply that variable to an entire group at once. \
-\
-In INI:
+When you use register with a loop, the data structure placed in the variable will contain a results attribute that is a list of all responses from the module. This differs from the data structure returned when using register without a loop.
 
-    [atlanta]
-    host1
-    host2
+    {
+        "changed": true,
+        "msg": "All items completed",
+        "results": [
+            {
+                "changed": true,
+                "cmd": "echo \"one\" ",
+                "delta": "0:00:00.003110",
+                "end": "2013-12-19 12:00:05.187153",
+                "invocation": {
+                    "module_args": "echo \"one\"",
+                    "module_name": "shell"
+                },
+                "item": "one",
+                "rc": 0,
+                "start": "2013-12-19 12:00:05.184043",
+                "stderr": "",
+                "stdout": "one"
+            },
+            {
+                "changed": true,
+                "cmd": "echo \"two\" ",
+                "delta": "0:00:00.002920",
+                "end": "2013-12-19 12:00:05.245502",
+                "invocation": {
+                    "module_args": "echo \"two\"",
+                    "module_name": "shell"
+                },
+                "item": "two",
+                "rc": 0,
+                "start": "2013-12-19 12:00:05.242582",
+                "stderr": "",
+                "stdout": "two"
+            }
+        ]
+    }
 
-    [atlanta:vars]
-    ntp_server=ntp.atlanta.example.com
-    proxy=proxy.atlanta.example.com
+Subsequent loops over the registered variable to inspect the results may look like
 
-In YAML:
+    - name: Fail if return code is not 0
+      ansible.builtin.fail:
+        msg: "The command ({{ item.cmd }}) did not have a 0 return code"
+      when: item.rc != 0
+      loop: "{{ echo.results }}"
 
-    atlanta:
-    hosts:
-        host1:
-        host2:
-    vars:
-        ntp_server: ntp.atlanta.example.com
-        proxy: proxy.atlanta.example.com
+During iteration, the result of the current item will be placed in the variable.
 
+    - name: Place the result of the current item in the variable
+      ansible.builtin.shell: echo "{{ item }}"
+      loop:
+        - one
+        - two
+      register: echo
+      changed_when: echo.stdout != "one"
 
----
-# Dynamic inventory with AWS
-
-
-install boto3 \
-and botocore \
-(pip install boto3, pip install botocore)
-
-## create a file called "aws_ec2.yaml"
-    
-        (example)
-        ---
-        plugin: aws_ec2
-        keyed_groups:
-        - key: tags
-            prefix: tag

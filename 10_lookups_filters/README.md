@@ -1,118 +1,142 @@
-# Ansible Inventory
+# Using filters to manipulate data
 
-It's very common to have a list of hosts that you need to deploy, configure, maintain, etc. Ansible provides a method for keeping track of them in one convenient file, and even provides ways to group them together and provide aliases for more flexibility. \
-Inventory files can be written in YAML , INI, or JSON, but in this course I will only be demonstrating them in INI. The default inventory file is located at /etc/ansible/hosts but you can overwrite the default location in your ansible.cfg configuration file, or you can provide your own configuration file when you run your Ansible commands. To specify a host file to use, pass the -i flag when running a command and provide the location to the file like this:
+Filters let you transform JSON data into YAML data, split a URL to extract the hostname, get the SHA1 hash of a string, add or multiply integers, and much more. You can use the Ansible-specific filters documented here to manipulate your data, or use any of the standard filters shipped with Jinja2 - see the list of built-in filters in the official Jinja2 template documentation. You can also use Python methods to transform data. You can create custom Ansible filters as plugins, though we generally welcome new filters into the ansible-core repo so everyone can use them.
 
-    ansible -i path/to/file -m module_name -a argument
-
-You can even provide multiple inventory files by using the -i flag multiple times and providing the file path to each file.
-
-Inside the inventory file, we can group together hosts underneath named groups that we denote by placing the group names into square brackets such as [groupname]. Hosts can appear in more than one group, making these files very flexible. You can also identify a specific port to use, otherwise Ansible will always default to port 22 for SSH. We can then select one or more groups to run our automations on instead of selecting all of the hosts in our inventory file.
-
- 
----
-The inventory file can be in one of many formats, depending on the inventory plugins you have. The most common formats are INI and YAML. A basic INI /etc/ansible/hosts might look like this:
-
-    mail.example.com
-
-    [webservers]
-    foo.example.com
-    bar.example.com
-
-    [dbservers]
-    one.example.com
-    two.example.com
-    three.example.com
-
-The headings in brackets are group names, which are used in classifying hosts and deciding what hosts you are controlling at what times and for what purpose. Group names should follow the same guidelines as Creating valid variable names.
-
-Here’s that same basic inventory file in YAML format:
-
-    all:
-    hosts:
-        mail.example.com:
-    children:
-        webservers:
-        hosts:
-            foo.example.com:
-            bar.example.com:
-        dbservers:
-        hosts:
-            one.example.com:
-            two.example.com:
-            three.example.com:
+Because templating happens on the Ansible controller, not on the target host, filters execute on the controller and transform data locally.
 
 
-Adding variables to inventory
+Handling undefined variables
 
-You can store variable values that relate to a specific host or group in inventory. To start with, you may add variables directly to the hosts and groups in your main inventory file. As you add more and more managed nodes to your Ansible inventory, however, you will likely want to store variables in separate host and group variable files. See Defining variables in inventory for details.
-Assigning a variable to one machine: host variables
+Filters can help you manage missing or undefined variables by providing defaults or making some variables optional. If you configure Ansible to ignore most undefined variables, you can mark some variables as requiring values with the mandatory filter.
+Providing default values
 
-You can easily assign a variable to a single host, then use it later in playbooks. \
-\
-In INI:
+You can provide default values for variables directly in your templates using the Jinja2 ‘default’ filter. This is often a better approach than failing if a variable is not defined:
 
-    [atlanta]
-    host1 http_port=80 maxRequestsPerChild=808
-    host2 http_port=303 maxRequestsPerChild=909
+{{ some_variable | default(5) }}
 
-In YAML:
+In the above example, if the variable ‘some_variable’ is not defined, Ansible uses the default value 5, rather than raising an “undefined variable” error and failing. If you are working within a role, you can also add a defaults/main.yml to define the default values for variables in your role.
 
-    atlanta:
-    hosts:
-        host1:
-        http_port: 80
-        maxRequestsPerChild: 808
-        host2:
-        http_port: 303
-        maxRequestsPerChild: 909
+Beginning in version 2.8, attempting to access an attribute of an Undefined value in Jinja will return another Undefined value, rather than throwing an error immediately. This means that you can now simply use a default with a value in a nested data structure (in other words, {{ foo.bar.baz | default('DEFAULT') }}) when you do not know if the intermediate values are defined.
 
-Connection variables also work well as host variables:
+If you want to use the default value when variables evaluate to false or an empty string you have to set the second parameter to true:
 
-    [targets]
+{{ lookup('env', 'MY_USER') | default('admin', true) }}
 
-    localhost              ansible_connection=local
-    other1.example.com     ansible_connection=ssh        ansible_user=myuser
-    other2.example.com     ansible_connection=ssh        ansible_user=myotheruser
+Making variables optional
 
-Assigning a variable to many machines: group variables
+By default Ansible requires values for all variables in a templated expression. However, you can make specific variables optional. For example, you might want to use a system default for some items and control the value for others. To make a variable optional, set the default value to the special variable omit:
 
-If all hosts in a group share a variable value, you can apply that variable to an entire group at once. \
-\
-In INI:
+- name: Touch files with an optional mode
+  ansible.builtin.file:
+    dest: "{{ item.path }}"
+    state: touch
+    mode: "{{ item.mode | default(omit) }}"
+  loop:
+    - path: /tmp/foo
+    - path: /tmp/bar
+    - path: /tmp/baz
+      mode: "0444"
 
-    [atlanta]
-    host1
-    host2
+In this example, the default mode for the files /tmp/foo and /tmp/bar is determined by the umask of the system. Ansible does not send a value for mode. Only the third file, /tmp/baz, receives the mode=0444 option.
 
-    [atlanta:vars]
-    ntp_server=ntp.atlanta.example.com
-    proxy=proxy.atlanta.example.com
+    Note
 
-In YAML:
+    If you are “chaining” additional filters after the default(omit) filter, you should instead do something like this: "{{ foo | default(None) | some_filter or omit }}". In this example, the default None (Python null) value will cause the later filters to fail, which will trigger the or omit portion of the logic. Using omit in this manner is very specific to the later filters you are chaining though, so be prepared for some trial and error if you do this.
 
-    atlanta:
-    hosts:
-        host1:
-        host2:
-    vars:
-        ntp_server: ntp.atlanta.example.com
-        proxy: proxy.atlanta.example.com
+## Defining mandatory values
 
+If you configure Ansible to ignore undefined variables, you may want to define some values as mandatory. By default, Ansible fails if a variable in your playbook or command is undefined. You can configure Ansible to allow undefined variables by setting DEFAULT_UNDEFINED_VAR_BEHAVIOR to false. In that case, you may want to require some variables to be defined. You can do this with:
 
----
-# Dynamic inventory with AWS
+    {{ variable | mandatory }}
 
+The variable value will be used as is, but the template evaluation will raise an error if it is undefined.
 
-install boto3 \
-and botocore \
-(pip install boto3, pip install botocore)
+A convenient way of requiring a variable to be overridden is to give it an undefined value using the undef keyword. This can be useful in a role’s defaults.
 
-## create a file called "aws_ec2.yaml"
-    
-        (example)
-        ---
-        plugin: aws_ec2
-        keyed_groups:
-        - key: tags
-            prefix: tag
+    galaxy_url: "https://galaxy.ansible.com"
+    galaxy_api_key: {{ undef(hint="You must specify your Galaxy API key") }}
+
+Defining different values for true/false/null (ternary)
+
+You can create a test, then define one value to use when the test returns true and another when the test returns false (new in version 1.9):
+
+    {{ (status == 'needs_restart') | ternary('restart', 'continue') }}
+
+In addition, you can define a one value to use on true, one value on false and a third value on null (new in version 2.8):
+
+    {{ enabled | ternary('no shutdown', 'shutdown', omit) }}
+
+Managing data types
+
+You might need to know, change, or set the data type on a variable. For example, a registered variable might contain a dictionary when your next task needs a list, or a user prompt might return a string when your playbook needs a boolean value. Use the type_debug, dict2items, and items2dict filters to manage data types. You can also use the data type itself to cast a value as a specific data type.
+Discovering the data type
+
+New in version 2.3.
+
+If you are unsure of the underlying Python type of a variable, you can use the type_debug filter to display it. This is useful in debugging when you need a particular type of variable:
+
+    {{ myvar | type_debug }}
+
+Transforming dictionaries into lists
+
+New in version 2.6.
+
+Use the dict2items filter to transform a dictionary into a list of items suitable for looping:
+
+    {{ dict | dict2items }}
+
+Dictionary data (before applying the dict2items filter):
+
+    tags:
+    Application: payment
+    Environment: dev
+
+List data (after applying the dict2items filter):
+
+  - key: Application
+    value: payment
+  - key: Environment
+    value: dev
+
+New in version 2.8.
+
+The dict2items filter is the reverse of the items2dict filter.
+
+If you want to configure the names of the keys, the dict2items filter accepts 2 keyword arguments. Pass the key_name and value_name arguments to configure the names of the keys in the list output:
+
+    {{ files | dict2items(key_name='file', value_name='path') }}
+
+Dictionary data (before applying the dict2items filter):
+
+    files:
+    users: /etc/passwd
+    groups: /etc/group
+
+List data (after applying the dict2items filter):
+
+  - file: users
+    path: /etc/passwd
+  - file: groups
+    path: /etc/group
+
+Transforming lists into dictionaries
+
+New in version 2.7.
+
+Use the items2dict filter to transform a list into a dictionary, mapping the content into key: value pairs:
+
+    {{ tags | items2dict }}
+
+List data (before applying the items2dict filter):
+
+    tags:
+    - key: Application
+        value: payment
+    - key: Environment
+        value: dev
+
+Dictionary data (after applying the items2dict filter):
+
+    Application: payment
+    Environment: dev
+

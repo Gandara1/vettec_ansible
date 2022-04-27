@@ -1,118 +1,45 @@
-# Ansible Inventory
+# Templating (Jinja2)
 
-It's very common to have a list of hosts that you need to deploy, configure, maintain, etc. Ansible provides a method for keeping track of them in one convenient file, and even provides ways to group them together and provide aliases for more flexibility. \
-Inventory files can be written in YAML , INI, or JSON, but in this course I will only be demonstrating them in INI. The default inventory file is located at /etc/ansible/hosts but you can overwrite the default location in your ansible.cfg configuration file, or you can provide your own configuration file when you run your Ansible commands. To specify a host file to use, pass the -i flag when running a command and provide the location to the file like this:
+Ansible uses Jinja2 templating to enable dynamic expressions and access to [variables](https://docs.ansible.com/ansible/latest/user_guide/playbooks_variables.html#playbooks-variables) and facts. You can use templating with the [template module](https://docs.ansible.com/ansible/latest/collections/ansible/builtin/template_module.html#template-module). For example, you can create a template for a configuration file, then deploy that configuration file to multiple environments and supply the correct data (IP address, hostname, version) for each environment. You can also use templating in playbooks directly, by templating task names and more. You can use all the [standard filters and tests](https://jinja.palletsprojects.com/en/3.1.x/templates/#builtin-filters) included in Jinja2. Ansible includes additional specialized filters for selecting and transforming data, tests for evaluating template expressions, and [Lookup plugins](https://docs.ansible.com/ansible/latest/plugins/lookup.html#lookup-plugins) for retrieving data from external sources such as files, APIs, and databases for use in templating.
 
-    ansible -i path/to/file -m module_name -a argument
+All templating happens on the Ansible controller before the task is sent and executed on the target machine. This approach minimizes the package requirements on the target (jinja2 is only required on the controller). It also limits the amount of data Ansible passes to the target machine. Ansible parses templates on the controller and passes only the information needed for each task to the target machine, instead of passing all the data on the controller and parsing it on the target.
 
-You can even provide multiple inventory files by using the -i flag multiple times and providing the file path to each file.
+## Delimiters Used in Jinja 2
 
-Inside the inventory file, we can group together hosts underneath named groups that we denote by placing the group names into square brackets such as [groupname]. Hosts can appear in more than one group, making these files very flexible. You can also identify a specific port to use, otherwise Ansible will always default to port 22 for SSH. We can then select one or more groups to run our automations on instead of selecting all of the hosts in our inventory file.
+    1.{% %} : used for control statements such as loops and if-else statements.
 
- 
----
-The inventory file can be in one of many formats, depending on the inventory plugins you have. The most common formats are INI and YAML. A basic INI /etc/ansible/hosts might look like this:
+    2.{{ }} :These double curly braces are the widely used tags in a template file and they are used for embedding variables and ultimately printing their value during code execution.
 
-    mail.example.com
+    3.{# #} used for comments which are not included in the template output.
+    The file extension of a jinja2 template is .j2.
+    Jinja2 Templates
 
-    [webservers]
-    foo.example.com
-    bar.example.com
+Jinja2 templates are simple template files that store variables that can change from time to time. When Playbooks are executed, these variables get replaced by actual values defined in Ansible Playbooks. This way, templating offers an efficient and flexible solution to create or alter configuration file with ease.
 
-    [dbservers]
-    one.example.com
-    two.example.com
-    three.example.com
+How to use Jinja2 template in Ansible?
 
-The headings in brackets are group names, which are used in classifying hosts and deciding what hosts you are controlling at what times and for what purpose. Group names should follow the same guidelines as Creating valid variable names.
+Now that we know something about Jinja2 and syntax, we will use a Jinja2 template to configure customized files on our managed nodes.
 
-Here’s that same basic inventory file in YAML format:
+Lets create templates project directory which we will use for this example. Here project means nothing but a new directory which contains everything your playbook needs such as ansible.cfg, inventory etc.
 
-    all:
-    hosts:
-        mail.example.com:
-    children:
-        webservers:
-        hosts:
-            foo.example.com:
-            bar.example.com:
-        dbservers:
-        hosts:
-            one.example.com:
-            two.example.com:
-            three.example.com:
+    [ansadmin@ansible-master ~]$ ls
+    templates
+    [ansadmin@ansible-master ~]$ cd templates/
+    [ansadmin@ansible-master templates]$ ls
+    ansible.cfg inventory
+    [ansadmin@ansible-master templates]$
 
+Lets create a simple inventory file with two managed nodes as server-a and server-b as shown bellow.
 
-Adding variables to inventory
+    [ansadmin@ansible-master templates]$ cat inventory
+    [nodes]
+    server-a.example.com
+    server-b.example.com
 
-You can store variable values that relate to a specific host or group in inventory. To start with, you may add variables directly to the hosts and groups in your main inventory file. As you add more and more managed nodes to your Ansible inventory, however, you will likely want to store variables in separate host and group variable files. See Defining variables in inventory for details.
-Assigning a variable to one machine: host variables
+Accessing Variables in JinJa2
 
-You can easily assign a variable to a single host, then use it later in playbooks. \
-\
-In INI:
+Lets create a sample Jinja2 template with the name index.j2
 
-    [atlanta]
-    host1 http_port=80 maxRequestsPerChild=808
-    host2 http_port=303 maxRequestsPerChild=909
-
-In YAML:
-
-    atlanta:
-    hosts:
-        host1:
-        http_port: 80
-        maxRequestsPerChild: 808
-        host2:
-        http_port: 303
-        maxRequestsPerChild: 909
-
-Connection variables also work well as host variables:
-
-    [targets]
-
-    localhost              ansible_connection=local
-    other1.example.com     ansible_connection=ssh        ansible_user=myuser
-    other2.example.com     ansible_connection=ssh        ansible_user=myotheruser
-
-Assigning a variable to many machines: group variables
-
-If all hosts in a group share a variable value, you can apply that variable to an entire group at once. \
-\
-In INI:
-
-    [atlanta]
-    host1
-    host2
-
-    [atlanta:vars]
-    ntp_server=ntp.atlanta.example.com
-    proxy=proxy.atlanta.example.com
-
-In YAML:
-
-    atlanta:
-    hosts:
-        host1:
-        host2:
-    vars:
-        ntp_server: ntp.atlanta.example.com
-        proxy: proxy.atlanta.example.com
-
-
----
-# Dynamic inventory with AWS
-
-
-install boto3 \
-and botocore \
-(pip install boto3, pip install botocore)
-
-## create a file called "aws_ec2.yaml"
-    
-        (example)
-        ---
-        plugin: aws_ec2
-        keyed_groups:
-        - key: tags
-            prefix: tag
+    [ansadmin@ansible-master templates]$ cat index.j2 
+    A message from {{ inventory_hostname }}
+    {{ webserver_message }}
