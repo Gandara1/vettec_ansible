@@ -1,6 +1,6 @@
 ---
-ansible_port: 22                                # SSH Port
-remote_user: ec2-user                              # USER used for deploy
-# System Related Variables
-ansible_python_interpreter: "{{python_path}}/bin/python3"
-
+  ansible_port: 22                                # SSH Port
+  ansible_user: ec2-user                              # USER used for deploy
+  ansible_ssh_private_key_file: ~/Desktop/keys/virginia_key                       #Private key file
+  
+  
