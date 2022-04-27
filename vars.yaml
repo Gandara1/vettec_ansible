@@ -1,0 +1,6 @@
+---
+ansible_port: 22                                # SSH Port
+remote_user: ec2-user                              # USER used for deploy
+# System Related Variables
+ansible_python_interpreter: "{{python_path}}/bin/python3"
+
