@@ -1,0 +1,7 @@
+---
+- name: My first playbook 
+  hosts: all
+  gather_facts: true
+
+  roles:
+    - my_first_role
