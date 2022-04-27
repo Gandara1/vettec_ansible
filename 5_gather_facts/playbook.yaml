@@ -6,4 +6,6 @@
     - "vars.yaml"
 
   tasks:
-    
+
+  - debug:
+      msg: "{{ ansible_env.HOME }}"
