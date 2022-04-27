@@ -7,7 +7,7 @@ After you create variables, either by defining them in a file, passing them at t
 
 Once you understand the concepts and examples on this page, read about Ansible facts, which are variables you retrieve from remote systems.
 
-Creating valid variable names
+Creating valid variable names
 
 Not all strings are valid Ansible variable names. A variable name can only include letters, numbers, and underscores. Python keywords or playbook keywords are not valid variable names. A variable name cannot begin with a number.
 
