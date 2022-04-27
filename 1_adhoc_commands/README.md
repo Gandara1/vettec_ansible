@@ -15,3 +15,7 @@ After running your ad hoc commands, Ansible will provide output that describes w
 Example command:
 
     ansible localhost -m file -a "path=./testing.txt state=touch"
+    ansible localhost -m file -a "path=./new_folder state=directory"
+    ansible localhost -m lineinfile -a "path=./testing.txt line='The cat in the hat'"
+    ansible localhost -m replace -a "path=./testing.txt regexp=cat replace=dog"
+    ansible localhost -m copy -a "src=./testing.txt dest=./new_folder"
