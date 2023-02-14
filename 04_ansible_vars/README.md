@@ -46,3 +46,34 @@ In this example, the variable defines the location of a file, which can vary fro
 
 ###### Note
 Ansible allows Jinja2 loops and conditionals in templates but not in playbooks. You cannot create a loop of tasks. Ansible playbooks are pure machine-parseable YAML.
+
+Defining variables in a play
+
+You can define variables directly in a playbook play:
+
+- hosts: webservers
+  vars:
+    http_port: 80
+
+When you define variables in a play, they are only visible to tasks executed in that play.
+Defining variables in included files and roles
+
+You can define variables in reusable variables files and/or in reusable roles. When you define variables in reusable variable files, the sensitive variables are separated from playbooks. This separation enables you to store your playbooks in a source control software and even share the playbooks, without the risk of exposing passwords or other sensitive and personal data. For information about creating reusable files and roles, see Re-using Ansible artifacts.
+
+This example shows how you can include variables defined in an external file:
+
+---
+
+- hosts: all
+  remote_user: root
+  vars:
+    favcolor: blue
+  vars_files:
+    - /vars/external_vars.yml
+
+  tasks:
+
+  - name: This is just a placeholder
+    ansible.builtin.command: /bin/echo foo
+
+
